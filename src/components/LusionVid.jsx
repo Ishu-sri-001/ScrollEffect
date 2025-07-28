@@ -194,7 +194,7 @@ const Cube = ({ triggerRef }) => {
             start: '10% top',
             end: 'bottom 50%',
             scrub: true,
-            markers: true,
+            // markers: true,
             onUpdate: (self) => {
               const progress = self.progress;
               
