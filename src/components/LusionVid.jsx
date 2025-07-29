@@ -19,102 +19,81 @@ void main() {
   vUv = uv;
   vec3 pos = position;
 
-  // === ANIMATION CONTROL ===
-  // Only apply displacement when uTime is within animation range
   float animationStart = 0.001;
-  float animationEnd = 4.5; // Total animation duration
-  
-  // Early exit if outside animation range - keeps geometry perfect
+  float animationEnd = 4.5;
+
   if (uTime < animationStart || uTime > animationEnd) {
     gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(pos, 1.0);
     return;
   }
 
-  // === TIME PHASES ===
   float stretchDuration = 1.5;
   float stretchPhase = smoothstep(animationStart, stretchDuration, uTime);
-  float wavePhaseTime = max(0.0, uTime - stretchDuration);
-  
-  // Fade out phase - starts at 3.5s and completes by 4.5s
   float fadeOutStart = 3.5;
   float fadeOutPhase = 1.0 - smoothstep(fadeOutStart, animationEnd, uTime);
 
-  // === FINAL displacement accumulator ===
   vec2 totalDisplacement = vec2(0.0);
 
   if (stretchPhase > 0.0) {
-    // === STRETCH: From Top-Right Corner (X-axis and slight -Y) ===
+    // === Stretch from top-right
     vec2 stretchOrigin = vec2(1.0, 1.0);
     float distFromOrigin = distance(vUv, stretchOrigin);
     float maxDist = sqrt(2.0);
     float normDist = distFromOrigin / maxDist;
 
-    // Stretch falloff based on distance from top-right corner
     float stretchFalloff = 1.0 - pow(normDist, 0.5);
-    
-    // Stretch displacement: primarily on X-axis with slight -Y
+
     vec2 stretchDisplacement = vec2(0.0);
     stretchDisplacement.x = stretchFalloff * 0.7 * stretchPhase * uWaveStrength;
     stretchDisplacement.y = -stretchFalloff * 0.1 * stretchPhase * uWaveStrength;
 
-    // === ANTI-TILT COMPENSATION ===
-    vec2 centerOffset = vec2(0.5, 0.5);
-    vec2 uvFromCenter = vUv - centerOffset;
-
     float compensationX = -0.3 * stretchPhase * uWaveStrength;
     float compensationY = 0.02 * stretchPhase * uWaveStrength;
-
     stretchDisplacement.x += compensationX;
     stretchDisplacement.y += compensationY;
 
-    // === WAVE: S-Shape Along Top, Bottom & Right Borders ===
     vec2 waveDisplacement = vec2(0.0);
 
-    float horz = 1.0 - vUv.x;
-    float vert = 1.0 - vUv.y;
-    float waveTravelDist = horz + vert;
+    // === Smooth edge falloffs
+    float edgeTop    = smoothstep(0.7, 1.0, vUv.y) * smoothstep(1.0, 0.7, vUv.y);
+    float edgeBottom = smoothstep(0.3, 0.0, vUv.y) * smoothstep(0.0, 0.3, vUv.y);
+    float edgeLeft   = smoothstep(0.3, 0.0, vUv.x) * smoothstep(0.0, 0.3, vUv.x);
+    float edgeRight  = smoothstep(0.7, 1.0, vUv.x) * smoothstep(1.0, 0.7, vUv.x);
 
-    float edgeTop = smoothstep(0.02, 0.0, abs(vUv.y - 1.0));
-    float edgeBottom = smoothstep(0.02, 0.0, abs(vUv.y - 0.0));
-    float edgeRight = smoothstep(0.02, 0.0, abs(vUv.x - 1.0));
+    // === Wave triggered during stretch
+    float PI = 3.14159265359;
 
-        if (wavePhaseTime > 0.0 && stretchPhase >= 0.95) {
-      // Wave starts from right and travels left (match stretch direction)
-      float travelX = 1.0 - vUv.x;
-      float waveArrival = travelX * 1.5;
-      float waveTime = max(0.0, wavePhaseTime - waveArrival);
+    // Distance from top-right
+    float distX = 1.0 - vUv.x;
+    float distY = 1.0 - vUv.y;
 
-      // S-shape oscillation
-      float sShapeX = sin(waveTime * 10.0 - travelX * 8.0);
-      float sShapeY = sin(waveTime * 12.0 - travelX * 6.0);
+    float directionalFalloff = pow(distX * 0.3 + distY, 1.2);
 
-      float waveX = sShapeX * exp(-waveTime * 1.5);
-      float waveY = sShapeY * exp(-waveTime * 1.8);
+    float spreadFactor = stretchPhase * 0.7; // How fast the wave spreads
 
-      waveX *= smoothstep(0.0, 0.3, waveTime) * 2.0;
-      waveY *= smoothstep(0.0, 0.3, waveTime) * 1.6;
+    float envelope = smoothstep(0.0, 1.0, spreadFactor - directionalFalloff);
+    float localWaveTime = spreadFactor - directionalFalloff;
 
-      // Apply to edges
-      waveDisplacement.y += -waveY * edgeTop * 0.2;
-      waveDisplacement.x += waveX * edgeTop * 0.55;
+    float easing = smoothstep(0.0, 0.3, localWaveTime) * exp(-localWaveTime * 1.5);
 
-      waveDisplacement.y += waveY * edgeBottom * 0.2;
-      waveDisplacement.x += waveX * edgeBottom * 0.55;
+    float waveFreq = PI * 0.7;
 
-      waveDisplacement.x += -waveX * edgeRight * 0.2;
-      waveDisplacement.y += waveY * edgeRight * 0.12;
-    }
+    float topBottomWave = sin(vUv.x * waveFreq + localWaveTime * 2.0);
+    float leftRightWave = sin(vUv.y * waveFreq + localWaveTime * 2.0);
 
-    
-    totalDisplacement = stretchDisplacement + waveDisplacement;
-    
-    // Apply fade out to smoothly return to original shape
-    totalDisplacement *= fadeOutPhase;
+    waveDisplacement.y += topBottomWave * easing * envelope * uWaveStrength * 2.1 * edgeTop;
+    waveDisplacement.y -= topBottomWave * easing * envelope * uWaveStrength * 2.1 * edgeBottom;
+
+    waveDisplacement.x -= leftRightWave * easing * envelope * uWaveStrength * 0.4 * edgeLeft;
+    waveDisplacement.x += leftRightWave * easing * envelope * uWaveStrength * 0.4 * edgeRight;
+
+    totalDisplacement = (stretchDisplacement + waveDisplacement) * fadeOutPhase;
   }
-  
+
   pos.xy += totalDisplacement;
   gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(pos, 1.0);
 }
+
 `;
 
 const fragmentShader = `
@@ -227,7 +206,7 @@ const Cube = ({ triggerRef }) => {
   }, [triggerRef]);
 
   return (
-    <mesh rotateZ={degToRad(180)} ref={meshRef} scale={scaleVal} position={[-1.6, 0.4, 0]}>
+    <mesh rotateZ={degToRad(180)} ref={meshRef} scale={scaleVal} position={[-1.5, 0.4, 0]}>
       <planeGeometry args={[3, 2, 800, 800]} />
       <shaderMaterial
         vertexShader={vertexShader}

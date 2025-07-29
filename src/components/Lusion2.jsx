@@ -1,7 +1,6 @@
 'use client';
 import React, { useRef, useEffect, useState } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import gsap from 'gsap';
 import ScrollTrigger from 'gsap/dist/ScrollTrigger';
@@ -20,87 +19,80 @@ void main() {
   vUv = uv;
   vec3 pos = position;
 
-  // === TIME PHASES ===
-  float stretchDuration = 1.5;
-  float stretchPhase = smoothstep(0.0, stretchDuration, uTime);
-  stretchPhase = min(stretchPhase, 1.0);
+  float animationStart = 0.001;
+  float animationEnd = 4.5;
 
-  float wavePhaseTime = max(0.0, uTime - stretchDuration);
-
-  // === STRETCH: From Top-Right Corner (X-axis and slight -Y) ===
-  vec2 stretchOrigin = vec2(1.0, 1.0);
-  float distFromOrigin = distance(vUv, stretchOrigin);
-  float maxDist = sqrt(2.0);
-  float normDist = distFromOrigin / maxDist;
-
-  // Stretch falloff based on distance from top-right corner
-  float stretchFalloff = 1.0 - pow(normDist, 0.5);
-  
-  // Stretch displacement: primarily on X-axis with slight -Y
-  vec2 stretchDisplacement = vec2(0.0);
-  stretchDisplacement.x = stretchFalloff * 0.6 * stretchPhase * uWaveStrength; // X-axis stretch
-  stretchDisplacement.y = -stretchFalloff * 0.1 * stretchPhase * uWaveStrength; // Slight -Y stretch
-  
-  // === ANTI-TILT COMPENSATION ===
-  // Calculate the center of mass shift and compensate to prevent tilting
-  vec2 centerOffset = vec2(0.5, 0.5); // UV center
-  vec2 uvFromCenter = vUv - centerOffset;
-  
-  // Compensation factors based on the stretch amounts
-  float compensationX = -0.12 * stretchPhase * uWaveStrength; // Counteract X-axis shift
-  float compensationY = 0.02 * stretchPhase * uWaveStrength;  // Counteract Y-axis shift
-  
-  // Apply compensation uniformly to maintain shape
-  stretchDisplacement.x += compensationX;
-  stretchDisplacement.y += compensationY;
-
-  // === WAVE: S-Shape Along Top, Bottom & Right Borders (Both X and Y axes) ===
-  vec2 waveDisplacement = vec2(0.0);
-
-  // Compute L-path distance from top-right corner
-  float horz = 1.0 - vUv.x;
-  float vert = 1.0 - vUv.y;
-  float waveTravelDist = horz + vert;
-
-  // Edge masks with sharper falloff for border-only effect
-  float edgeTop = smoothstep(0.02, 0.0, abs(vUv.y - 1.0));    // top edge
-  float edgeBottom = smoothstep(0.02, 0.0, abs(vUv.y - 0.0)); // bottom edge
-  float edgeRight = smoothstep(0.02, 0.0, abs(vUv.x - 1.0));  // right edge
-
-  if (wavePhaseTime > 0.0 && stretchPhase >= 0.95) {
-    float waveArrival = waveTravelDist * 1.2;
-    float waveTime = max(0.0, wavePhaseTime - waveArrival);
-
-    // S-shaped wave pattern for both axes
-    float sShapeY = sin(waveTime * 12.0 - waveTravelDist * 8.0); // Y-axis wave
-    float sShapeX = sin(waveTime * 10.0 - waveTravelDist * 6.0); // X-axis wave
-    
-    float waveY = sShapeY * exp(-waveTime * 1.8);
-    float waveX = sShapeX * exp(-waveTime * 1.5);
-    
-    // Apply smooth wave onset and boost amplitude
-    waveY *= smoothstep(0.0, 0.3, waveTime) * 1.8;
-    waveX *= smoothstep(0.0, 0.3, waveTime) * 1.2;
-
-    // Apply displacement on borders with S-shapes on both axes
-    // Top edge: Y displacement (up/down) + X displacement (left/right)
-    waveDisplacement.y += -waveY * edgeTop * 0.18;
-    waveDisplacement.x += waveX * edgeTop * 0.12;
-    
-    // Bottom edge: Y displacement (up/down) + X displacement (left/right)  
-    waveDisplacement.y += waveY * edgeBottom * 0.18;
-    waveDisplacement.x += waveX * edgeBottom * 0.12;
-    
-    // Right edge: X displacement (left/right) + Y displacement (up/down)
-    waveDisplacement.x += -waveX * edgeRight * 0.15;
-    waveDisplacement.y += waveY * edgeRight * 0.10;
+  if (uTime < animationStart || uTime > animationEnd) {
+    gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(pos, 1.0);
+    return;
   }
 
-  // === FINAL COMBINED DEFORMATION ===
-  vec2 totalDisplacement = stretchDisplacement + waveDisplacement;
-  pos.x += totalDisplacement.x;
-  pos.y += totalDisplacement.y;
+  float stretchDuration = 1.5;
+  float stretchPhase = smoothstep(animationStart, stretchDuration, uTime);
+  float wavePhaseTime = max(0.0, uTime - stretchDuration);
 
+  float fadeOutStart = 3.5;
+  float fadeOutPhase = 1.0 - smoothstep(fadeOutStart, animationEnd, uTime);
+
+  vec2 totalDisplacement = vec2(0.0);
+
+  if (stretchPhase > 0.0) {
+    // === Stretch from top-right
+    vec2 stretchOrigin = vec2(1.0, 1.0);
+    float distFromOrigin = distance(vUv, stretchOrigin);
+    float maxDist = sqrt(2.0);
+    float normDist = distFromOrigin / maxDist;
+
+    float stretchFalloff = 1.0 - pow(normDist, 0.5);
+
+    vec2 stretchDisplacement = vec2(0.0);
+    stretchDisplacement.x = stretchFalloff * 0.7 * stretchPhase * uWaveStrength;
+    stretchDisplacement.y = -stretchFalloff * 0.1 * stretchPhase * uWaveStrength;
+
+    float compensationX = -0.3 * stretchPhase * uWaveStrength;
+    float compensationY = 0.02 * stretchPhase * uWaveStrength;
+    stretchDisplacement.x += compensationX;
+    stretchDisplacement.y += compensationY;
+
+    vec2 waveDisplacement = vec2(0.0);
+
+    // === SMOOTH EDGE MASKS (gradual falloff from edges)
+    float edgeTop    = smoothstep(0.7, 1.0, vUv.y) * smoothstep(1.0, 0.7, vUv.y);
+    float edgeBottom = smoothstep(0.3, 0.0, vUv.y) * smoothstep(0.0, 0.3, vUv.y);
+    float edgeLeft   = smoothstep(0.3, 0.0, vUv.x) * smoothstep(0.0, 0.3, vUv.x);
+    float edgeRight  = smoothstep(0.7, 1.0, vUv.x) * smoothstep(1.0, 0.7, vUv.x);
+
+    if (wavePhaseTime > 0.0 && stretchPhase >= 0.95) {
+      float PI = 3.14159265359;
+
+      float travelTime = distance(vUv, vec2(1.0, 1.0)) * 1.5;
+float localWaveTime = max(0.0, wavePhaseTime - travelTime);
+
+// Temporal ease and decay with smoother curve
+float easing = smoothstep(0.0, 0.4, localWaveTime) * exp(-localWaveTime * 1.2);
+
+// Smooth single sine wave (stiffer)
+float waveFreq = PI * 0.7; // Lower frequency = slower/stiffer wave
+
+// Top and bottom edges - horizontal wave
+float topBottomWave = sin(vUv.x * waveFreq + localWaveTime * 2.0);
+
+// Left and right edges - vertical wave  
+float leftRightWave = sin(vUv.y * waveFreq + localWaveTime * 2.0);
+
+// Apply wave displacements with reduced strength
+waveDisplacement.y += topBottomWave * easing * uWaveStrength * 0.8 * edgeTop;
+waveDisplacement.y -= topBottomWave * easing * uWaveStrength * 0.8 * edgeBottom;
+
+waveDisplacement.x -= leftRightWave * easing * uWaveStrength * 0.4 * edgeLeft;
+waveDisplacement.x += leftRightWave * easing * uWaveStrength * 0.4 * edgeRight;
+
+    }
+
+    totalDisplacement = (stretchDisplacement + waveDisplacement) * fadeOutPhase;
+  }
+
+  pos.xy += totalDisplacement;
   gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(pos, 1.0);
 }
 `;
@@ -153,19 +145,26 @@ const Cube = ({ triggerRef }) => {
         const mat = meshRef.current.material;
 
         // Initial animation on load
-        // gsap.from(mat.uniforms.uWaveStrength, {
-        //   value: 5,
-        //   duration: 2.5,
-        //   ease: "elastic.out(1,0.3)",
-        //   delay: -2,
-        // });
-
-        gsap.to(mat.uniforms.uTime, {
-          value: 5, // Increased to allow for longer stretch + wave sequence
-          duration: 4.0,
-          ease: "power2.out",
-          delay: 0,
+        gsap.from(mat.uniforms.uWaveStrength, {
+          value: 5,
+          duration: 2.5,
+          ease: "elastic.out(1,0.3)",
+          delay: -2,
         });
+
+        // Initial time animation with proper reset
+        gsap.timeline()
+          .to(mat.uniforms.uTime, {
+            value: 4.5, // Match the animationEnd in shader
+            duration: 4.0,
+            ease: "power2.out",
+            delay: 0,
+          })
+          .to(mat.uniforms.uTime, {
+            value: 0, // Reset to 0 for perfect geometry
+            duration: 0.1,
+            delay: 0.5,
+          });
 
         // Scroll-triggered animation
         gsap.timeline({
@@ -175,15 +174,19 @@ const Cube = ({ triggerRef }) => {
             start: '10% top',
             end: 'bottom 50%',
             scrub: true,
-            markers: true,
+            // markers: true,
             onUpdate: (self) => {
               const progress = self.progress;
               
               // Modulate wave strength based on scroll progress
               mat.uniforms.uWaveStrength.value = 1 + Math.sin(progress * 6) * 2;
               
-              // Continuous time progression for ongoing animation
-              mat.uniforms.uTime.value = progress * 5 + 4;
+              // Map progress to animation time range (0.001 to 4.5)
+              mat.uniforms.uTime.value = 0.001 + (progress * 4.499);
+            },
+            onComplete: () => {
+              // Ensure geometry returns to perfect state
+              mat.uniforms.uTime.value = 0;
             }
           }
         })
@@ -204,17 +207,16 @@ const Cube = ({ triggerRef }) => {
   }, [triggerRef]);
 
   return (
-    <mesh rotateZ={degToRad(180)} ref={meshRef} scale={scaleVal} position={[-1.9, 0.4, 0]}>
-      <planeGeometry args={[3, 2, 600, 600]} />
+    <mesh rotateZ={degToRad(180)} ref={meshRef} scale={scaleVal} position={[-1.5, 0.4, 0]}>
+      <planeGeometry args={[3, 2, 800, 800]} />
       <shaderMaterial
         vertexShader={vertexShader}
         fragmentShader={fragmentShader}
         uniforms={{
-  uTime: { value: 0 },
-  uTexture: { value: texture },
-  uWaveStrength: { value: 0.6 },
-}}
-
+          uTime: { value: 0 }, // Starts at 0 for perfect geometry
+          uTexture: { value: texture },
+          uWaveStrength: { value: 0.5 },
+        }}
         side={THREE.DoubleSide}
         transparent={true}
       />
